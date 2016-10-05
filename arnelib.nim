@@ -2,6 +2,37 @@ import macros
 
 ## sequence operations ##
 
+proc newSeq*[T](length, capacity: Natural): seq[T] =
+  assert(length <= capacity)
+  result.newSeq(capacity)
+  result.setLen(length)
+
+proc cap*[T](s: seq[T]): Natural =
+  cast[ptr tuple[length, capacity: Natural]](s).capacity
+
+proc reserve*[T](s: var seq[T]; newCap: Natural): void =
+  if newCap > s.cap:
+    let oldLen = s.len
+    s.setLen newCap
+    s.setLen oldLen
+
+proc data*[T](s: var seq[T]) : ptr T = 
+  addr(s[0])
+  
+proc data*[N, T](s: var array[N, T]) : ptr T = 
+  addr(s[0])
+  
+when isMainModule:
+  var testSeq = newSeq[int](0, 3)
+  assert testSeq.len == 0 and testSeq.cap == 3
+  testSeq.add([1,2,3,4])
+  assert testSeq.len == 4 and testSeq.cap == 6
+  testSeq.reserve 5
+  assert testSeq.len == 4 and testSeq.cap == 6
+  testSeq.reserve 10
+  assert testSeq.len == 4 and testSeq.cap >= 10
+  
+
 proc back*(node: NimNode): NimNode = node[node.len-1]
 proc back*[T](data: seq[T]): T = data[high(data)]
 proc back*[T](data: openarray[T]): T = data[high(data)]
@@ -9,8 +40,6 @@ proc back*[T](data: openarray[T]): T = data[high(data)]
 proc head*(node: NimNode): NimNode = node[0]
 proc head*[T](data: seq[T]): T = data[0]
 proc head*[T](data: openarray[T]): T = data[0]
-
-#proc high*(node: NimNode): int = node.len - 1
 
 proc sorted*[T](data: seq[T]): seq[T] =
   data.sorted(cmp)
@@ -32,6 +61,10 @@ proc mkString*[T](data : openarray[T]; sep: string) : string =
   mkString(data, "", sep, "")
 
 ## macro operations ##
+  
+macro debugAst*(ast: typed): untyped =
+  echo ast.repr
+  ast
   
 proc addAll*(dst, src: NimNode): NimNode {.discardable.} =
   for node in src:
@@ -75,7 +108,7 @@ proc newDotExpr*(a,b,c: NimNode): NimNode =
 proc newBracketExpr*(a,b: NimNode): NimNode =
   nnkBracketExpr.newTree(a,b)
   
-proc rangeUntil*(upper: int): NimNode {.compileTime.} =
+proc newRangeUntil*(upper: int): NimNode {.compileTime.} =
   nnkInfix.newTree(ident"..<", newLit(0), newLit(upper))
   
 type
@@ -105,7 +138,7 @@ proc get(dst: NimNode; index: seq[int]): NimNode =
     it = it[i]
     
   return it
-  
+
 proc pop*(builder: var NimNodeBuilder): NimNode {.discardable.} =
   let innerStmtList = builder.data.pop
   let index = builder.insertionPoints.pop
@@ -233,17 +266,23 @@ when isMainModule:
 
 import macros
 
-macro castof*(sym:typed, t : typedesc): expr =
+macro castof*(sym:typed, t : typedesc): untyped =
   # introduce a new identifier with the same name as the input identifier
   # this identifier will have the type t, but hide sym
   let ident = newIdentNode($sym.symbol)
   result = quote do:
     (let `ident` = cast[`t`](`sym`); `sym` of `t`)
 
-macro namedEcho*(x: typed): expr =
-  let lit = newLit(x.repr & ": ")
-  quote do:
-    echo `lit`, `x`
+macro namedEcho*(x: typed, xs: varargs[typed]): untyped =
+  let lit = newLit(x.repr & "=")
+  let sepLit = newLit(" ")
+  result = newCall(ident"echo", lit, x)
+
+  for x in xs:
+    let lit = newLit(x.repr & "=")
+    result.add sepLit, lit, x
+  
+  echo result.repr
     
 if isMainModule:    
   type
@@ -273,4 +312,75 @@ if isMainModule:
       echo "it is float32 ", x.data.len
     else:
       echo "don't know the type"
+
+# gen prefix because of full generic implementation
+# no export of generic implementation, because it casese too many false 
+# posititives in completion
       
+proc genRangeswap[Coll](data: var Coll; s0, s1, N: Natural): void =
+  for i in 0 ..< N:
+    swap(data[s0+i], data[s1+i])
+    
+proc genTransform[Coll](data: var Coll; first, middle, last: Natural): void =
+  assert(0 <= first and first <= middle and middle < last and last <= data.len)
+  if first == middle:
+    return
+    
+  let
+    N = middle - first
+    M = last - middle
+  
+  if N < M:
+    genRangeswap(data, first  , middle  , N  )
+    genTransform(data, first+N, middle+N, last)
+  else: # M >= N
+    genRangeswap(data, first    , middle  , M )
+    genTransform(data, first+M, middle, last)
+
+proc transform(data: var string; first, middle, last: Natural): void =
+  genTransform(data, first, middle, last)
+
+proc transform(data: var string; middle: Natural): void =
+  genTransform(data, 0, middle, data.len)
+  
+proc transform[T](data: var openarray[T]; first, middle, last: Natural): void =
+  genTransform(data, first, middle, last)
+  
+proc transform[T](data: var openarray[T]; middle: Natural): void =
+  genTransform(data, 0, middle, data.len)
+
+
+
+  
+when isMainModule:
+  proc echoStringMarks(s: string, marks : varargs[int]) : void =
+    for i, c in s:
+      if i in marks:
+        stdout.write "|"
+      else:
+        stdout.write " "
+      stdout.write c
+
+    if len(s) in marks:
+      stdout.write  "|"
+    echo ""
+
+  var s0,s1,s2 = "xxxabcdefgxxx"
+
+  s0.echoStringMarks(3,6,10)
+  s0.transform(3, 6, 10)
+  s0.echoStringMarks(3,7,10)
+  echo ""
+  s1.echoStringMarks(3,5,10)
+  s1.transform(3, 5, 10)
+  s1.echoStringMarks(3,8,10)
+  echo ""
+  s2.echoStringMarks(3,7,10)
+  s2.transform(3, 7, 10)  
+  s2.echoStringMarks(3,6,10)
+
+  namedEcho s0, s1, s2 
+
+  
+proc rangeUntilNode*(upper: int): NimNode {.compileTime.} =
+  nnkInfix.newTree(ident"..<", newLit(0), newLit(upper))
