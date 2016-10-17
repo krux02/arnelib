@@ -10,7 +10,7 @@ proc newSeq*[T](length, capacity: Natural): seq[T] =
 proc cap*[T](s: seq[T]): Natural =
   cast[ptr tuple[length, capacity: Natural]](s).capacity
 
-proc reserve*[T](s: var seq[T]; newCap: Natural): void =
+proc setCap*[T](s: var seq[T]; newCap: Natural): void =
   if newCap > s.cap:
     let oldLen = s.len
     s.setLen newCap
@@ -27,11 +27,10 @@ when isMainModule:
   assert testSeq.len == 0 and testSeq.cap == 3
   testSeq.add([1,2,3,4])
   assert testSeq.len == 4 and testSeq.cap == 6
-  testSeq.reserve 5
+  testSeq.setCap 5
   assert testSeq.len == 4 and testSeq.cap == 6
-  testSeq.reserve 10
+  testSeq.setCap 10
   assert testSeq.len == 4 and testSeq.cap >= 10
-  
 
 proc back*(node: NimNode): NimNode = node[node.len-1]
 proc back*[T](data: seq[T]): T = data[high(data)]
@@ -182,11 +181,12 @@ template forStmtBlock*(builder: var NimNodeBuilder; loopVar, rangeVal: NimNode, 
   
 proc isIdentChar(c: char): bool =
   'A' <= c and c <= 'Z' or 'a' <= c and c <= 'z' or '0' <= c and c <= '9' or c == '_'
-
+  
 macro s*(arg: static[string]): string =
   # does not handle utf8 runes properly
   # pretents everything is ASCII 
-  # no way to escape the $ sign. Should probably be $$.
+  # no way to escape the $ sign implemented. Should probably be $$.
+  
   result = nnkStmtListExpr.newTree()
   let str = genSym(nskVar, "str")
   result.add quote do:
@@ -348,9 +348,6 @@ proc transform[T](data: var openarray[T]; first, middle, last: Natural): void =
   
 proc transform[T](data: var openarray[T]; middle: Natural): void =
   genTransform(data, 0, middle, data.len)
-
-
-
   
 when isMainModule:
   proc echoStringMarks(s: string, marks : varargs[int]) : void =
@@ -384,3 +381,118 @@ when isMainModule:
   
 proc rangeUntilNode*(upper: int): NimNode {.compileTime.} =
   nnkInfix.newTree(ident"..<", newLit(0), newLit(upper))
+
+
+##########################################################################################
+###################################### zip iterators #####################################
+##########################################################################################
+
+## -- 2 -- ##
+
+iterator zipIter*[T0,T1](arg0: openarray[T0]; arg1: openarray[T1]): tuple[v0:T0; v1:T1] =
+  let high = min(high(arg0), high(arg1))
+
+  for i in 0 .. high:
+    yield(arg0[i], arg1[i])
+
+iterator indexZipIter*[T0,T1](arg0: openarray[T0]; arg1: openarray[T1]): tuple[i: Natural; v0:T0; v1:T1] =
+  let high = min(high(arg0), high(arg1))      
+
+  for i in 0 .. high:
+    yield(Natural(i), arg0[i], arg1[i])
+
+iterator zipIter*[T0,T1,T2](
+    arg0: openarray[T0]; arg1: openarray[T1]; arg2: openarray[T2]):
+       tuple[v0:T0; v1:T1; v2:T2] =
+         
+  let high = min(high(arg0), high(arg1), high(arg2))
+
+  for i in 0 .. high:
+    yield(arg0[i], arg1[i], arg2[i])
+
+iterator indexZipIter*[T0,T1,T2](
+    arg0: openarray[T0]; arg1: openarray[T1]; arg2: openarray[T2]):
+       tuple[i: Natural; v0:T0; v1:T1; v2:T2] =
+         
+  let high = min(high(arg0), high(arg1), high(arg2))
+  for i in 0 .. high:
+    yield(Natural(i), arg0[i], arg1[i], arg2[i])
+
+iterator zipIter*[T0,T1,T2,T3](
+    arg0: openarray[T0]; arg1: openarray[T1]; arg2: openarray[T2]; arg3: openarray[T3]):
+       tuple[v0:T0; v1:T1; v2:T2; v3:T3] =
+         
+  let high = min(high(arg0), high(arg1), high(arg2), high(arg3))
+
+  for i in 0 .. high:
+    yield(arg0[i], arg1[i], arg2[i], arg3[i])
+
+iterator indexZipIter*[T0,T1,T2,T3](
+    arg0: openarray[T0]; arg1: openarray[T1]; arg2: openarray[T2]; arg3: openarray[T3]):
+       tuple[i: Natural; v0:T0; v1:T1; v2:T2; v3:T3] =
+         
+  let high = min(high(arg0), high(arg1), high(arg2), high(arg3))
+  for i in 0 .. high:
+    yield(Natural(i), arg0[i], arg1[i], arg2[i], arg3[i])
+
+when isMainModule:
+  var data0 = @[10,20,30,40,50]
+  var data1 = @["a", "b", "c"]
+
+  for intVal,strVal in zipIter(data0, data1):
+    echo strVal, " - ", intVal
+
+  for i,intVal,strVal in indexZipIter(data0, data1):
+    echo strVal, " - ", intVal
+
+#[
+macro genZipIter(numArgs: static[int]): untyped =
+  result = quote do:
+    iterator zipIter[T0,T1](arg0: openarray[T0]; arg1: openarray[T1]): tuple[v0:T0; v1:T1] =
+      let high = min(high(arg0), high(arg1))
+
+      for i in 0 .. high:
+        yield(arg0[i], arg1[i])
+
+    iterator indexZipIter[T0,T1](arg0: openarray[T0]; arg1: openarray[T1]): tuple[i: Natural; v0:T0; v1:T1] =
+      let high = min(high(arg0), high(arg1))      
+
+      for i in 0 .. high:
+        yield(Natural(i), arg0[i], arg1[i])
+
+  var genericsParamDefs = result[0][2][0]
+  for i in 2 ..< numArgs:
+    genericsParamDefs.insert(i, ident(s"T$i"))
+  result[0][2][0] = genericsParamDefs
+  result[1][2][0] = genericsParamDefs
+
+  var resultTupleIdentDefs = result[0][3][0]
+
+  for i in 2 ..< numArgs:
+    resultTupleIdentDefs.add nnkIdentDefs.newTree(
+      ident(s"v$i"),
+      ident(s"T$i"),
+      newEmptyNode()
+    )
+
+  result[0][3][0] = resultTupleIdentDefs
+  
+  var argumentsNode = result[0][3]
+
+  for i in 2 ..< numArgs:
+    let newNode = nnkIdentDefs.newTree(
+      ident(s"arg$i"),
+      newBracketExpr(ident"openArray", ident(s"T$i")),
+      newEmptyNode()
+    )
+      
+    argumentsNode.insert(i+1, newNode)
+
+  result[0][3] = argumentsNode
+  result[1][3] = argumentsNode
+  
+  echo result.repr
+]#    
+
+
+
