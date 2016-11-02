@@ -1,4 +1,4 @@
-import macros
+import macros, sequtils, algorithm
 
 ## sequence operations ##
 
@@ -31,7 +31,7 @@ when isMainModule:
   assert testSeq.len == 4 and testSeq.cap == 6
   testSeq.setCap 10
   assert testSeq.len == 4 and testSeq.cap >= 10
-
+  
 proc back*(node: NimNode): NimNode = node[node.len-1]
 proc back*[T](data: seq[T]): T = data[high(data)]
 proc back*[T](data: openarray[T]): T = data[high(data)]
@@ -42,7 +42,7 @@ proc head*[T](data: openarray[T]): T = data[0]
 
 proc sorted*[T](data: seq[T]): seq[T] =
   data.sorted(cmp)
-
+  
 proc indices*[T](arg: seq[T]): auto =
   0 ..< len(arg)
 proc indices*(node: NimNode): auto =
@@ -50,9 +50,8 @@ proc indices*(node: NimNode): auto =
   
 proc mkString*[T](data : openarray[T]; before, sep, after: string) : string =
   result = before
-  result &= $data[0]
-  for i in 1 .. high(data):
-    result &= sep
+  for i,x in data:
+    if i != 0: result &= sep
     result &= $data[i]
   result &= after
 
@@ -255,16 +254,14 @@ when isMainModule:
     myName = "Arne"
     age    = 28
     
-  assert s"Hello, my name is $myName, I am $age years old. In five years I am ${age + 5}" == "Hello, my name is Arne, I am 28 years old. In five years I am 33"
+  assert s"Hello, my name is $myName, I am $age years old. In five years I am ${age + 5}" ==
+          "Hello, my name is Arne, I am 28 years old. In five years I am 33"
 
   ###############
   # ########### #
   # # cast of # #
   # ########### #
   ###############
-
-
-import macros
 
 macro castof*(sym:typed, t : typedesc): untyped =
   # introduce a new identifier with the same name as the input identifier
@@ -283,8 +280,49 @@ macro namedEcho*(x: typed, xs: varargs[typed]): untyped =
     result.add sepLit, lit, x
   
   echo result.repr
-    
-if isMainModule:    
+
+proc echoTagIntern(procDef: NimNode; printArgs: bool): NimNode {.compileTime.} =
+  procDef.expectKind nnkProcDef
+
+  let name = procDef[0].repr
+  let nameLit = newLit(name)
+  let echoCall = newCall(ident"echo", newLit("<" & name)) 
+  
+  if printArgs:
+    for i in 1 ..< len(procDef[3]):
+      let identDefs = procDef[3][i]
+      for j in 0 ..< identDefs.len-2:
+        let identNode = identDefs[j]
+        let nameLit = newLit($identNode.ident)
+        echoCall.add newLit(" ")
+        echoCall.add nameLit
+        echoCall.add newLit("=\"")
+        echoCall.add identNode
+        echoCall.add newLit("\"")
+        
+  echoCall.add newLit(">")
+  
+  let beginStmt = quote do:
+    `echoCall`
+    defer:
+      echo "</", `nameLit`, ">"
+  
+  result = procDef
+  result[6].insert(0, beginStmt)
+
+
+macro echoTag*(procDef: untyped): untyped = echoTagIntern(procDef, true)
+macro echoTagNoArgs*(procDef: untyped): untyped = echoTagIntern(procDef, false)
+  
+if isMainModule:
+  proc foobar(x,y: int; s: string = ""): int {. echoTag .} =
+    if y == 0:
+      x
+    else:
+      foobar(x+1, y-1, s)
+
+  echo foobar(17,4, "abc")
+  
   type
     MyContainer[T] = object of RootObj
       data : seq[T]
@@ -314,7 +352,7 @@ if isMainModule:
       echo "don't know the type"
 
 # gen prefix because of full generic implementation
-# no export of generic implementation, because it casese too many false 
+# no export of generic implementation, because it creates too many false 
 # posititives in completion
       
 proc genRangeswap[Coll](data: var Coll; s0, s1, N: Natural): void =
