@@ -186,17 +186,18 @@ proc nextGaussian*(rndSrc: var MersenneTwister): float64 =
   else:
     -x
 
-var collection : array[0..100, int]
-var mt = newMersenneTwister(seed = 123)
+when isMainModule:
+  var collection : array[0..100, int]
+  var mt = newMersenneTwister(seed = 123)
 
-for i in 1 .. 10000000:
-  let v = mt.nextGaussian
-  let index = int(round((v / 3) * 50)) + 50
-  if 0 <= index and index <= 100:
-     collection[index] += 1
+  for i in 1 .. 10000000:
+    let v = mt.nextGaussian
+    let index = int(round((v / 3) * 50)) + 50
+    if 0 <= index and index <= 100:
+       collection[index] += 1
 
-for v in collection:
-  for _ in 0 ..< (v div 2000):
-    stdout.write 'x'
-  echo ""
+  for v in collection:
+    for _ in 0 ..< (v div 2000):
+      stdout.write 'x'
+    echo ""
   
