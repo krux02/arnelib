@@ -1,5 +1,7 @@
 import macros, sequtils, algorithm, mersenne, ziggurat_normal_dist, math
 
+## random numbers
+
 var mt = newMersenneTwister(seed = 123)
 
 proc randNormal*(): float64 = mt.nextGaussian()
@@ -40,7 +42,13 @@ proc rand*(maxval: int32): int32 =
 proc rand*(maxval: int64): int64 =
   assert(maxval > 0)
   rand(maxval.uint64).int64
-  
+
+## stuff ##
+
+template offsetof*(Typ: typedesc; member: untyped): int =
+  var dummy = cast[ptr Typ](nil)
+  cast[int](dummy[].member.addr)
+
 ## sequence operations ##
   
 proc newSeq*[T](length, capacity: Natural): seq[T] =
@@ -136,6 +144,12 @@ proc indexOf*(father,child: NimNode): int =
   return -1
 
 proc indexOf*[T](data: seq[T]; value: T): int =
+  for i, x in data:
+    if x == value:
+      return i
+  return -1
+
+proc indexOf*(data: string; value: char): int =
   for i, x in data:
     if x == value:
       return i
