@@ -45,10 +45,18 @@ proc rand*(maxval: int64): int64 =
 
 ## stuff ##
 
+  
+  
+
 template offsetof*(Typ: typedesc; member: untyped): int =
   var dummy = cast[ptr Typ](nil)
   cast[int](dummy[].member.addr)
 
+proc iotaSeq*[T: SomeNumber](length: T) : seq[T] =
+  result.newSeq length.int
+  for i in 0 ..< int(length):
+    result[i] = T(i)
+  
 ## sequence operations ##
   
 proc newSeq*[T](length, capacity: Natural): seq[T] =
