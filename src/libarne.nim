@@ -1,52 +1,7 @@
 import macros, sequtils, algorithm, mersenne, ziggurat_normal_dist, math
 
 ## random numbers
-
-var mt = newMersenneTwister(seed = 123)
-
-proc randNormal*(): float64 = mt.nextGaussian()
-
-proc rand_u64*(): uint64 =
-  (uint64(mt.getNum) shl 32) or uint64(mt.getNum)
-
-proc rand_u32*(): uint32 = mt.getNum
-
-proc rand_i32*(): int32 = rand_u32().int32
-
-proc rand_i64*(): int64 = rand_u64().int64
-
-proc rand_f64*(): float64 =
-  rand_u64().float64 / pow(2'f64, 64'f64)
-
-proc rand_f32*(): float32 =
-  rand_u32().float32 / pow(2'f32, 32'f32)
-
-proc rand*(maxval: uint64): uint64 =
-  let limit = uint64(-1) - (uint64(-1) mod maxval)
-  var bits = rand_u64()
-  while bits > limit:
-    bits = rand_u64()
-  result = bits mod maxval
-
-proc rand*(maxval: uint32): uint32 =
-  let limit = uint32(high(uint32)) - uint32(high(uint32)) mod maxval
-  var bits = rand_u32()
-  while bits > limit:
-    bits = rand_u32()
-  result = bits mod maxval
-
-proc rand*(maxval: int32): int32 =
-  assert(maxval > 0)
-  rand(maxval.uint32).int32
-
-proc rand*(maxval: int64): int64 =
-  assert(maxval > 0)
-  rand(maxval.uint64).int64
-
 ## stuff ##
-
-  
-  
 
 template offsetof*(Typ: typedesc; member: untyped): int =
   var dummy = cast[ptr Typ](nil)
@@ -89,14 +44,6 @@ when isMainModule:
   testSeq.setCap 10
   assert testSeq.len == 4 and testSeq.cap >= 10
   
-proc back*(node: NimNode): NimNode = node[node.len-1]
-proc back*[T](data: seq[T]): T = data[high(data)]
-proc back*[T](data: openarray[T]): T = data[high(data)]
-
-proc head*(node: NimNode): NimNode = node[0]
-proc head*[T](data: seq[T]): T = data[0]
-proc head*[T](data: openarray[T]): T = data[0]
-
 proc sorted*[T](data: seq[T]): seq[T] =
   data.sorted(cmp)
   
@@ -120,16 +67,6 @@ proc mkString*[T](data : openarray[T]; sep: string) : string =
 macro debugAst*(ast: typed): untyped =
   echo ast.repr
   ast
-  
-proc addAll*(dst, src: NimNode): NimNode {.discardable.} =
-  for node in src:
-    dst.add(node)
-  dst
-
-proc addAll*(dst: NimNode; src: openarray[NimNode]): NimNode {.discardable.} =
-  for node in src:
-    dst.add(node)
-  dst
 
 proc newIdentDefs*(names : openarray[NimNode], tpe,val: NimNode): NimNode =
   result = nnkIdentDefs.newTree(names)
@@ -162,16 +99,7 @@ proc indexOf*(data: string; value: char): int =
     if x == value:
       return i
   return -1
-  
-proc newDotExpr*(a,b,c: NimNode): NimNode =
-  newDotExpr(a,b).newDotExpr(c)
-
-proc newBracketExpr*(a,b: NimNode): NimNode =
-  nnkBracketExpr.newTree(a,b)
-  
-proc newRangeUntil*(upper: int): NimNode {.compileTime.} =
-  nnkInfix.newTree(ident"..<", newLit(0), newLit(upper))
-  
+   
 type
   NimNodeBuilder* = object
     data: seq[NimNode]
@@ -438,16 +366,16 @@ proc genTransform[Coll](data: var Coll; first, middle, last: Natural): void =
     genRangeswap(data, first    , middle  , M )
     genTransform(data, first+M, middle, last)
 
-proc transform(data: var string; first, middle, last: Natural): void =
+proc transform*(data: var string; first, middle, last: Natural): void =
   genTransform(data, first, middle, last)
 
-proc transform(data: var string; middle: Natural): void =
+proc transform*(data: var string; middle: Natural): void =
   genTransform(data, 0, middle, data.len)
   
-proc transform[T](data: var openarray[T]; first, middle, last: Natural): void =
+proc transform*[T](data: var openarray[T]; first, middle, last: Natural): void =
   genTransform(data, first, middle, last)
   
-proc transform[T](data: var openarray[T]; middle: Natural): void =
+proc transform*[T](data: var openarray[T]; middle: Natural): void =
   genTransform(data, 0, middle, data.len)
   
 when isMainModule:
