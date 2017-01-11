@@ -55,39 +55,6 @@ proc update(arg: NimNode; index: seq[int]; value: seq[NimNode]): void =
   else:
     update(arg, index.head, value)
 
-#[  
-macro test(): untyped =
-  var foo = quote do:
-    [1,2,3,4, @@(var x = 0)]
-
-  iterator bar(): NimNode =
-    for i in [1,2,3]:
-      yield newLit(i)
-
-  foo.update([0,0], bar())
-]#
-
-template makeNodeSeq(arg: untyped): untyped =
-  iterator myIter(): NimNode =
-    arg
-
-  let s = toSeq(myIter())
-  s
-
-macro foo1(): untyped =
-  let sym0 = genSym()
-  
-  result = quote do:
-    [`sym0`]
-    
-  iterator iter0(): NimNode =
-    for i in 1 .. 3: yield newLit(i)
-  
-  result.update(@[0,0], toSeq(iter0()))
-  
-let x = foo1()
-echo @x
-
 proc recGenSymSubst(arg: NimNode; index: seq[int]; dst: var seq[tuple[sym: NimNode; index: seq[int]; node: NimNode]]): void =
   for i, node in arg:
     if node.kind == nnkPrefix and node[0] == ident"@@":
@@ -101,75 +68,84 @@ proc recGenSymSubst(arg: NimNode) : seq[tuple[sym: NimNode; index: seq[int]; nod
   result.newSeq(0)
   arg.recGenSymSubst(@[], result)
 
-  
-macro superQuote(arg: untyped): untyped =
-  arg.expectKind nnkDo
-  #echo arg.treeRepr
-  
-  var substAst = arg[6]
-  let tmp = substAst.recGenSymSubst
+when true:  
+  macro superQuote(arg: untyped): untyped =
+    arg.expectKind nnkDo
 
-  echo substAst.repr
+    var substAst = arg[6]
+    let tmp = substAst.recGenSymSubst
 
-  var updateCalls = newSeq[NimNode](0)
+    var updateCalls = newSeq[NimNode](0)
 
-  let astSym = genSym(nskLet, "ast")
-  
-  for sym, index, node in tmp.items():
-    # todo this needs some smartness:
-    # the node is the node of an ast that needs to be compiled to an iterator
-    ## result.update(index, node)
+    let astSym = genSym(nskLet, "ast")
 
-    let iter = genSym(nskIterator, "nodeIt")
+    for sym, index, node in tmp.items():
+      # todo this needs some smartness:
+      # the node is the node of an ast that needs to be compiled to an iterator
+      ## result.update(index, node)
+
+      let iter = genSym(nskIterator, "nodeIt")
+
+      updateCalls.add quote do:
+        iterator `iter`(): NimNode =
+          `node`
+
+        `astSym`.update(@`index`, toSeq(`iter`()))
+
+    var xresult = newStmtList()
+
+    for i in 0 ..< updateCalls.len:
+      xresult.add(updateCalls[updateCalls.len - 1 - i])
+
+    let macrosym = genSym(nskMacro, "mac")
+
+    result = quote do:
+      macro `macrosym`(arg: untyped): untyped =
+        let `astSym` = arg
+        `xresult`
+
+        return `astSym`
+
+      `macrosym`(`substAst`)
+
+    echo result.repr
+
+  proc main(): void =
+    let x = superQuote do:
+      [ @@(for i in 1 .. 3: yield newLit(i); yield newLit(7)), 8, 9, @@(for i in 1 .. 4: yield newLit(10*i);) ]
+
+    echo @x
     
-    updateCalls.add quote do:
-      iterator `iter`(): NimNode =
-        `node`
+  main()
+
+    
+else:
+  macro mac109499(arg109501: untyped): untyped =
+    echo "in inner generated macro"
+    echo "arg: ", arg109501.repr
+    let ast109497 = arg109501
+    iterator nodeIt109498(): NimNode =
+      for i in 1 .. 3: yield newLit(i)
+      yield newLit(7)
+
+    block:
+      #ast109497.update(@[0, 0], toSeq(nodeIt109498()))
+      let parent = ast109497[0]
+      let pos = 0
+      parent.del(pos)
+      var i = 0
+      for node in nodeIt109498():
+        parent.insert(pos + i, node)
+        i += 1
         
-      `astSym`.update(@`index`, toSeq(`iter`()))
+    return ast109497
 
-  var xresult = newStmtList()
+  mac109499 do:
+    [sym0]
 
-  for i in 0 ..< updateCalls.len:
-    xresult.add(updateCalls[updateCalls.len - 1 - i])
+  
 
-  let macrosym = genSym(nskMacro, "mac")
-    
-  var result = quote do:
-    macro `macrosym`(arg: untyped): untyped =
-      echo "in inner generated macro"
-      echo "arg: ", arg.repr
-      
-      let `astSym` = arg
-      `xresult`
 
-      return `astSym`
-
-    `macrosym`(`substAst`)
-
-  echo result.repr
-#[
-proc main(): void =
-  let x = superQuote do:
-    [ @@(for i in 1 .. 3: yield newLit(i); yield newLit(7)) ]
-
-  #echo x
-]#
-#main()
-
-macro mac109499(arg109501: untyped): untyped =
-  echo "in inner generated macro"
-  echo "arg: ", arg109501.repr
-  let ast109497 = arg109501
-  iterator nodeIt109498(): NimNode =
-    for i in 1 .. 3: yield newLit(i)
-    yield newLit(7)
-
-  ast109497.update(@ [0, 0], toSeq(nodeIt109498()))
-  return ast109497
-
-mac109499:
-  [sym0]
 
 
 #[
