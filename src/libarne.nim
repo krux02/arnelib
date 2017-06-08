@@ -80,7 +80,8 @@ proc newAsgn*(lhs,rhs: NimNode): NimNode =
   
 proc newBracketExpr*(node: NimNode, args: openarray[NimNode]): NimNode =
   result = nnkBracketExpr.newTree(node)
-  result.addAll(args)
+  for arg in args:
+    result.add args
 
 proc indexOf*(father,child: NimNode): int =
   for i in 0 ..< len(father):
@@ -116,7 +117,7 @@ proc getResult*(builder: NimNodeBuilder): NimNode =
   builder.data[0]
   
 proc stmtList*(builder: NimNodeBuilder): NimNode =
-  builder.data.back
+  builder.data[^1]
 
 proc root*(builder: NimNodeBuilder): NimNode = builder.data[0] 
 
@@ -131,17 +132,18 @@ proc get(dst: NimNode; index: seq[int]): NimNode =
 proc pop*(builder: var NimNodeBuilder): NimNode {.discardable.} =
   let innerStmtList = builder.data.pop
   let index = builder.insertionPoints.pop
-  let insertionPoint = builder.data.back.get(index)
+  let insertionPoint = builder.data[^1].get(index)
 
   innerStmtList.expectKind nnkStmtList
   insertionPoint.expectKind nnkStmtList
   insertionPoint.del(insertionPoint.len)
-  insertionPoint.addAll(innerStmtList)
+  for stmt in innerStmtList:
+    insertionPoint.add stmt
  
 proc pushBlockStmt*(builder: var NimNodeBuilder): void =
   builder.insertionPoints.add(@[builder.stmtList.len, 1])
 
-  builder.data.back.add nnkBlockStmt.newTree(
+  builder.data[^1].add nnkBlockStmt.newTree(
     newEmptyNode(), newStmtList())
 
   builder.data.add(newStmtList())
@@ -149,7 +151,7 @@ proc pushBlockStmt*(builder: var NimNodeBuilder): void =
 proc pushForStmt*(builder: var NimNodeBuilder; loopVar, rangeVal: NimNode): void =
   builder.insertionPoints.add(@[builder.stmtList.len, 2])
 
-  builder.data.back.add nnkForStmt.newTree(
+  builder.data[^1].add nnkForStmt.newTree(
     loopVar,
     rangeVal,
     newStmtList()
@@ -350,7 +352,7 @@ proc genRangeswap[Coll](data: var Coll; s0, s1, N: Natural): void =
   for i in 0 ..< N:
     swap(data[s0+i], data[s1+i])
     
-proc genTransform[Coll](data: var Coll; first, middle, last: Natural): void =
+proc genRotate[Coll](data: var Coll; first, middle, last: Natural): void =
   assert(0 <= first and first <= middle and middle < last and last <= data.len)
   if first == middle:
     return
@@ -361,22 +363,22 @@ proc genTransform[Coll](data: var Coll; first, middle, last: Natural): void =
   
   if N < M:
     genRangeswap(data, first  , middle  , N  )
-    genTransform(data, first+N, middle+N, last)
+    genRotate(data, first+N, middle+N, last)
   else: # M >= N
     genRangeswap(data, first    , middle  , M )
-    genTransform(data, first+M, middle, last)
+    genRotate(data, first+M, middle, last)
 
-proc transform*(data: var string; first, middle, last: Natural): void =
-  genTransform(data, first, middle, last)
+proc rotate*(data: var string; first, middle, last: Natural): void =
+  genRotate(data, first, middle, last)
 
-proc transform*(data: var string; middle: Natural): void =
-  genTransform(data, 0, middle, data.len)
+proc rotate*(data: var string; middle: Natural): void =
+  genRotate(data, 0, middle, data.len)
   
-proc transform*[T](data: var openarray[T]; first, middle, last: Natural): void =
-  genTransform(data, first, middle, last)
+proc rotate*[T](data: var openarray[T]; first, middle, last: Natural): void =
+  genRotate(data, first, middle, last)
   
-proc transform*[T](data: var openarray[T]; middle: Natural): void =
-  genTransform(data, 0, middle, data.len)
+proc rotate*[T](data: var openarray[T]; middle: Natural): void =
+  genRotate(data, 0, middle, data.len)
   
 when isMainModule:
   proc echoStringMarks(s: string, marks : varargs[int]) : void =
@@ -394,15 +396,15 @@ when isMainModule:
   var s0,s1,s2 = "xxxabcdefgxxx"
 
   s0.echoStringMarks(3,6,10)
-  s0.transform(3, 6, 10)
+  s0.rotate(3, 6, 10)
   s0.echoStringMarks(3,7,10)
   echo ""
   s1.echoStringMarks(3,5,10)
-  s1.transform(3, 5, 10)
+  s1.rotate(3, 5, 10)
   s1.echoStringMarks(3,8,10)
   echo ""
   s2.echoStringMarks(3,7,10)
-  s2.transform(3, 7, 10)  
+  s2.rotate(3, 7, 10)  
   s2.echoStringMarks(3,6,10)
 
   namedEcho s0, s1, s2 
